@@ -10,7 +10,7 @@ Shared visualization helpers live in [lab_utils/visualization.py](lab_utils/visu
 
 - image galleries for NumPy exploration
 - class-balance and error-rate plots for Pandas analysis
-- training curves and reference-style feature-map grids for PyTorch
+- training curves and feature-map grids for PyTorch
 
 The lessons use a lightweight curated Kaggle dataset of cat and dog faces that students can download directly.
 
@@ -60,4 +60,10 @@ That script will:
 
 - Lab 1 uses NumPy to inspect images as arrays and build a nearest-centroid baseline
 - Lab 2 uses Pandas for metadata analysis, split thinking, and NumPy error analysis
-- Lab 3 uses PyTorch to train a small binary classifier and compare it against the NumPy baseline
+- Lab 3 uses PyTorch to train a simple CNN, compare it against the NumPy baseline, and optionally visualize stage-1 and stage-2 feature maps
+
+## Student-specific variants
+
+- Set the same `STUDENT_ID` in the first code cell of all three notebooks
+- That value is used as the random seed for sample selection, split shuffling, batch order, and the PyTorch feature-map example
+- Lab 1 saves predictions to `artifacts/lab1_numpy_predictions_<student_id>.csv`, and Labs 2-3 look for the matching file

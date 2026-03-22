@@ -11,3 +11,6 @@ wheels/
 
 # Downloaded and prepared datasets
 data/
+
+# Notebook-generated outputs
+artifacts/

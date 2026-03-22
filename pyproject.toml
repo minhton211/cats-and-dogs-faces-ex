@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "lab"
 version = "0.1.0"
@@ -5,9 +9,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "ipykernel>=7.2.0",
     "kaggle>=1.7.4.5",
     "matplotlib>=3.10.8",
     "numpy>=2.4.3",
     "pandas>=3.0.1",
     "torch>=2.10.0",
 ]
+
+[tool.setuptools]
+packages = ["lab_utils"]

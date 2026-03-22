@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 from typing import Iterable, Sequence
 
 import matplotlib.pyplot as plt
@@ -401,3 +402,383 @@ def plot_feature_maps_like_reference(
         ax.set_title(title)
     fig.tight_layout()
     return fig, ax, grid_image
+
+
+def get_random_directions_like_reference(params, seed: int | None = None):
+    """
+    Generate random parameter directions using the same method as the reference notebook.
+
+    Each trainable tensor receives a `torch.randn_like(...)` direction. When a seed is
+    provided, both NumPy and PyTorch are seeded for reproducibility.
+    """
+    import torch
+
+    params = list(params)
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+    direction = OrderedDict()
+    for name, param in params:
+        if param.requires_grad:
+            direction[name] = torch.randn_like(param.data)
+
+    return direction
+
+
+def normalize_direction_like_reference(direction, params):
+    """
+    Normalize each random direction tensor to match the norm of its parameter tensor.
+
+    This mirrors the normalization step used in Stephen Welch's gradient descent
+    notebook before sweeping across a loss landscape.
+    """
+    import torch
+
+    param_dict = OrderedDict(list(params))
+    normalized_direction = OrderedDict()
+
+    for name, dir_tensor in direction.items():
+        param_norm = torch.norm(param_dict[name].data)
+        dir_norm = torch.norm(dir_tensor)
+        if dir_norm > 0:
+            normalized_direction[name] = dir_tensor * (param_norm / dir_norm)
+        else:
+            normalized_direction[name] = dir_tensor
+
+    return normalized_direction
+
+
+def clone_parameter_state_like_reference(params):
+    """Clone the current trainable parameters into an ordered state dictionary."""
+    return OrderedDict(
+        (name, param.detach().clone())
+        for name, param in list(params)
+        if param.requires_grad
+    )
+
+
+def load_parameter_state_like_reference(params, state) -> None:
+    """Restore trainable parameters from an ordered state dictionary."""
+    import torch
+
+    with torch.no_grad():
+        for name, param in list(params):
+            if name in state and param.requires_grad:
+                param.data.copy_(state[name])
+
+
+def subtract_parameter_states_like_reference(start_state, end_state):
+    """Build a direction dictionary from the difference between two parameter states."""
+    return OrderedDict(
+        (name, end_state[name] - start_state[name])
+        for name in start_state.keys()
+    )
+
+
+def direction_inner_product_like_reference(direction_a, direction_b) -> float:
+    """Compute the global inner product between two direction dictionaries."""
+    total = 0.0
+    for name in direction_a.keys():
+        tensor_a = direction_a[name].detach().cpu().numpy().ravel()
+        tensor_b = direction_b[name].detach().cpu().numpy().ravel()
+        total += float(np.dot(tensor_a, tensor_b))
+    return total
+
+
+def scale_direction_like_reference(direction, scale: float):
+    """Multiply every tensor in a direction dictionary by a scalar."""
+    return OrderedDict((name, tensor * scale) for name, tensor in direction.items())
+
+
+def orthogonalize_direction_like_reference(direction, reference_direction):
+    """Remove the component of one direction that lies along another direction."""
+    reference_norm_sq = direction_inner_product_like_reference(reference_direction, reference_direction)
+    if reference_norm_sq <= 0:
+        return OrderedDict((name, tensor.clone()) for name, tensor in direction.items())
+
+    projection_scale = (
+        direction_inner_product_like_reference(direction, reference_direction)
+        / reference_norm_sq
+    )
+    orthogonal_direction = OrderedDict()
+    for name, tensor in direction.items():
+        orthogonal_direction[name] = tensor - projection_scale * reference_direction[name]
+    return orthogonal_direction
+
+
+def compute_loss_landscape_on_plane_like_reference(
+    model,
+    params,
+    evaluate_loss_fn,
+    *,
+    alphas: Sequence[float],
+    betas: Sequence[float],
+    base_state,
+    direction1,
+    direction2,
+) -> np.ndarray:
+    """
+    Evaluate loss on a fixed 2D parameter plane.
+
+    This is the key piece needed for before/after comparisons and trajectory plots:
+    every checkpoint is evaluated in the same coordinate system instead of being
+    recentred at its own optimum.
+    """
+    import torch
+
+    filtered_params = [(name, param) for name, param in list(params) if param.requires_grad]
+    original_state = clone_parameter_state_like_reference(filtered_params)
+
+    losses: list[list[float]] = []
+    try:
+        with torch.no_grad():
+            for alpha in alphas:
+                losses.append([])
+                for beta in betas:
+                    for name, param in filtered_params:
+                        param.data = (
+                            base_state[name]
+                            + alpha * direction1[name]
+                            + beta * direction2[name]
+                        )
+                    losses[-1].append(float(evaluate_loss_fn()))
+    finally:
+        load_parameter_state_like_reference(filtered_params, original_state)
+
+    return np.asarray(losses, dtype=np.float32)
+
+
+def compute_loss_landscape_like_reference(
+    model,
+    params,
+    evaluate_loss_fn,
+    *,
+    alphas: Sequence[float],
+    betas: Sequence[float],
+    direction_seed_1: int = 11,
+    direction_seed_2: int = 111,
+) -> np.ndarray:
+    """
+    Evaluate a 2D loss landscape around the current model weights.
+
+    The method follows the reference notebook closely:
+    1. sample two random parameter directions
+    2. normalize each direction to the norm of the corresponding parameter tensor
+    3. perturb parameters on an `(alpha, beta)` grid
+    4. measure loss at each point
+    5. restore the original parameters
+    """
+    import torch
+
+    filtered_params = [(name, param) for name, param in list(params) if param.requires_grad]
+    direction1 = get_random_directions_like_reference(filtered_params, seed=direction_seed_1)
+    direction2 = get_random_directions_like_reference(filtered_params, seed=direction_seed_2)
+    direction1 = normalize_direction_like_reference(direction1, filtered_params)
+    direction2 = normalize_direction_like_reference(direction2, filtered_params)
+
+    original_params = clone_parameter_state_like_reference(filtered_params)
+    return compute_loss_landscape_on_plane_like_reference(
+        model,
+        filtered_params,
+        evaluate_loss_fn,
+        alphas=alphas,
+        betas=betas,
+        base_state=original_params,
+        direction1=direction1,
+        direction2=direction2,
+    )
+
+
+def project_state_to_plane_like_reference(reference_state, direction1, direction2, target_state) -> tuple[float, float]:
+    """
+    Project a checkpoint onto the 2D direction plane used for the loss landscape.
+
+    We solve a small 2x2 least-squares system so the projection still behaves well
+    when the two random directions are not perfectly orthogonal.
+    """
+    dot_11 = 0.0
+    dot_12 = 0.0
+    dot_22 = 0.0
+    dot_b1 = 0.0
+    dot_b2 = 0.0
+
+    for name, ref_tensor in reference_state.items():
+        delta = (target_state[name] - ref_tensor).detach().cpu().numpy().ravel()
+        dir1 = direction1[name].detach().cpu().numpy().ravel()
+        dir2 = direction2[name].detach().cpu().numpy().ravel()
+
+        dot_11 += float(np.dot(dir1, dir1))
+        dot_12 += float(np.dot(dir1, dir2))
+        dot_22 += float(np.dot(dir2, dir2))
+        dot_b1 += float(np.dot(delta, dir1))
+        dot_b2 += float(np.dot(delta, dir2))
+
+    gram = np.array([[dot_11, dot_12], [dot_12, dot_22]], dtype=np.float64)
+    rhs = np.array([dot_b1, dot_b2], dtype=np.float64)
+    alpha, beta = np.linalg.lstsq(gram, rhs, rcond=None)[0]
+    return float(alpha), float(beta)
+
+
+def plot_loss_landscape_like_reference(
+    alphas: Sequence[float],
+    betas: Sequence[float],
+    losses: np.ndarray,
+    *,
+    filled_levels: int = 20,
+    contour_levels: int = 30,
+    figsize: tuple[float, float] = (10, 8),
+    title: str = "Loss Landscape",
+    xlabel: str = "alpha",
+    ylabel: str = "beta",
+    show_colorbar: bool = True,
+    ax=None,
+    vmax: float | None = None,
+    trajectory: Sequence[Sequence[float]] | None = None,
+    trajectory_color: str = "#FF00FF",
+    trajectory_linewidth: float = 1.8,
+    point_size: float = 14.0,
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a loss landscape with the same visual recipe as the reference notebook.
+
+    Styling matches the cited implementation:
+    - `viridis` filled contours
+    - `alpha=0.8`
+    - thin white contour lines on top
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+    contourf = ax.contourf(
+        alphas,
+        betas,
+        losses,
+        filled_levels,
+        cmap="viridis",
+        alpha=0.8,
+        vmax=vmax,
+    )
+    ax.contour(alphas, betas, losses, contour_levels, colors="white", linewidths=0.5)
+    if trajectory:
+        trajectory_array = np.asarray(trajectory, dtype=np.float32)
+        ax.plot(
+            trajectory_array[:, 0],
+            trajectory_array[:, 1],
+            color=trajectory_color,
+            linewidth=trajectory_linewidth,
+            marker="o",
+            markersize=3.5,
+        )
+        ax.scatter(
+            trajectory_array[-1, 0],
+            trajectory_array[-1, 1],
+            c=trajectory_color,
+            s=point_size,
+            zorder=5,
+        )
+    if show_colorbar:
+        fig.colorbar(contourf, ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_loss_landscape_comparison_like_reference(
+    alphas: Sequence[float],
+    betas: Sequence[float],
+    landscapes: Sequence[np.ndarray],
+    titles: Sequence[str],
+    *,
+    trajectories: Sequence[Sequence[Sequence[float]] | None] | None = None,
+    figsize: tuple[float, float] = (12, 5),
+    filled_levels: int = 30,
+    contour_levels: int = 30,
+    trajectory_color: str = "#FF00FF",
+) -> tuple[plt.Figure, np.ndarray]:
+    """Create side-by-side contour panels in the same visual style as the reference."""
+    if len(landscapes) != len(titles):
+        raise ValueError("landscapes and titles must have the same length.")
+
+    fig, axes = plt.subplots(1, len(landscapes), figsize=figsize, squeeze=False)
+    axes = axes[0]
+    vmax = max(float(np.max(loss)) for loss in landscapes)
+
+    for idx, (ax, loss_grid, title) in enumerate(zip(axes, landscapes, titles)):
+        trajectory = None if trajectories is None else trajectories[idx]
+        plot_loss_landscape_like_reference(
+            alphas,
+            betas,
+            loss_grid,
+            filled_levels=filled_levels,
+            contour_levels=contour_levels,
+            title=title,
+            show_colorbar=False,
+            ax=ax,
+            vmax=vmax,
+            trajectory=trajectory,
+            trajectory_color=trajectory_color,
+        )
+
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_loss_landscape_surface_like_reference(
+    alphas: Sequence[float],
+    betas: Sequence[float],
+    losses: np.ndarray,
+    *,
+    figsize: tuple[float, float] = (10, 8),
+    title: str = "3D Loss Landscape Near the Optimum",
+    xlabel: str = "alpha",
+    ylabel: str = "beta",
+    zlabel: str = "loss",
+    elev: float = 32.0,
+    azim: float = -58.0,
+    show_colorbar: bool = True,
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Render a lightweight 3D view using the same `viridis` palette as the reference.
+
+    The reference notebook focuses on 2D contours. This companion view keeps the same
+    color language and overlays white floor contours so the 3D surface remains visually
+    aligned with the original contour plots.
+    """
+    alpha_grid, beta_grid = np.meshgrid(np.asarray(alphas), np.asarray(betas), indexing="ij")
+    z_floor = float(np.min(losses))
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="3d")
+    surface = ax.plot_surface(
+        alpha_grid,
+        beta_grid,
+        losses,
+        cmap="viridis",
+        alpha=0.8,
+        linewidth=0,
+        antialiased=True,
+    )
+    ax.contour(
+        alpha_grid,
+        beta_grid,
+        losses,
+        zdir="z",
+        offset=z_floor,
+        levels=15,
+        colors="white",
+        linewidths=0.5,
+    )
+    ax.set_zlim(z_floor, float(np.max(losses)))
+    ax.view_init(elev=elev, azim=azim)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_zlabel(zlabel)
+    if show_colorbar:
+        fig.colorbar(surface, ax=ax, shrink=0.7, pad=0.08)
+    fig.tight_layout()
+    return fig, ax
