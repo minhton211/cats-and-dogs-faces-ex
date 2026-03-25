@@ -1,0 +1,19 @@
+{
+  "name": "Cats and Dogs Codespace",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+
+  "containerEnv": {
+    "UV_CACHE_DIR": "/tmp/uv-cache",
+    "PIP_NO_CACHE_DIR": "1"
+  },
+
+  "postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install uv && uv sync --no-cache",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/workspaces/${localWorkspaceFolderBasename}/.venv/bin/python"
+      }
+    }
+  }
+}
