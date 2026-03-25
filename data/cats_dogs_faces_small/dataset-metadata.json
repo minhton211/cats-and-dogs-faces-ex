@@ -1,0 +1,19 @@
+{
+  "title": "Cat vs Dog Faces Small",
+  "id": "duongtranhai/cats-dogs-faces-small",
+  "subtitle": "Lightweight 64x64 cat and dog face subset for beginner ML labs",
+  "description": "A lightweight teaching subset derived from AFHQ Animal Faces, containing balanced cat and dog face images resized to 64x64 with train/val/test splits and metadata.csv.",
+  "licenses": [
+    {
+      "name": "CC-BY-4.0"
+    }
+  ],
+  "keywords": [
+    "education",
+    "computer-vision",
+    "cats",
+    "dogs",
+    "faces"
+  ],
+  "isPrivate": false
+}
