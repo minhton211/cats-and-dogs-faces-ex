@@ -10,7 +10,7 @@ wheels/
 .venv
 
 # Downloaded and prepared datasets
-data/
+# data/
 
 # Notebook-generated outputs
 artifacts/
