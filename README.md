@@ -1,4 +1,4 @@
-# Cat vs Dog Faces Lab Sequence
+# Cats vs Dogs Lab Sequence
 
 This repo includes three connected Jupyter notebooks in [labs](labs):
 
@@ -12,9 +12,11 @@ Shared visualization helpers live in [lab_utils/visualization.py](lab_utils/visu
 - class-balance and error-rate plots for Pandas analysis
 - training curves and feature-map grids for PyTorch
 
-The lessons use a lightweight curated Kaggle dataset of cat and dog faces that students can download directly.
+## Dataset
 
-- [Student dataset - Kaggle](https://www.kaggle.com/datasets/duongtranhai/cats-dogs-faces-small/data)
+All three labs use the lightweight curated Kaggle dataset of cat and dog faces.
+
+Dataset available at: .data/cats_dogs_faces_small/
 
 The notebooks expect a small prepared teaching subset at:
 
@@ -30,8 +32,6 @@ data/cats_dogs_faces_small/
     cat/
     dog/
 ```
-
-## Download the Dataset
 
 Use [scripts/download_animal_faces.py](scripts/download_animal_faces.py) to download the already-cleaned dataset directly from Kaggle.
 
@@ -52,18 +52,14 @@ That script will:
 - verify that `train`, `val`, `test`, and `metadata.csv` are present
 - verify that the extracted dataset contains images
 
-## Recommended setup
-
-- Use the included curated `64x64` dataset for fast CPU-friendly labs
-
 ## Notebook flow
 
-- Lab 1 uses NumPy to inspect images as arrays and build a nearest-centroid baseline
-- Lab 2 uses Pandas for metadata analysis, split thinking, and NumPy error analysis
-- Lab 3 uses PyTorch to train a simple CNN, compare it against the NumPy baseline, and optionally visualize stage-1 and stage-2 feature maps
+- Lab 1 uses NumPy to inspect cat and dog face images as arrays and build a small hand-crafted feature matrix
+- Lab 2 uses Pandas for curated metadata analysis, split thinking, and error analysis
+- Lab 3 uses PyTorch to train a simple CNN on the same face dataset and visualize stage-1 and stage-2 feature maps
 
 ## Student-specific variants
 
 - Set the same `STUDENT_ID` in the first code cell of all three notebooks
 - That value is used as the random seed for sample selection, split shuffling, batch order, and the PyTorch feature-map example
-- Lab 1 saves predictions to `artifacts/lab1_numpy_predictions_<student_id>.csv`, and Labs 2-3 look for the matching file
+- Lab 1 uses `STUDENT_ID` to choose a reproducible subset and preview order
